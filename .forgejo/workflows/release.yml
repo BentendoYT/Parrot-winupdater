@@ -1,0 +1,152 @@
+name: Release
+
+on: [workflow_dispatch]
+
+env:
+  app_file: LibreWolf-WinUpdater
+  app_name: LibreWolf WinUpdater
+
+jobs:
+  release:
+    runs-on: epsilon
+    container:
+      image: scottyhardy/docker-wine:stable
+    steps:
+      - name: Set up dependencies
+        run: |
+          wget https://vcs.fi/api/packages/OSSign/debian/repository.key -O /etc/apt/keyrings/ossign.asc -q
+          echo "deb [signed-by=/etc/apt/keyrings/ossign.asc] https://vcs.fi/api/packages/OSSign/debian stable main" | tee /etc/apt/sources.list.d/ossign.list
+          sudo apt-get update
+          sudo apt-get install -y nodejs zip ossign s3cmd
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Ahk2Exe
+        env:
+          DL_AUTOHOTKEY: ${{ vars.DL_AUTOHOTKEY }}
+          SHA_AUTOHOTKEY: ${{ vars.SHA_AUTOHOTKEY }}
+        run: |
+          wget -qO ahk.zip ${{ env.DL_AUTOHOTKEY }}
+          echo "${{ env.SHA_AUTOHOTKEY }} ahk.zip" | sha256sum -c || exit 1
+          unzip -j ahk.zip Compiler/Ahk2Exe.exe "Compiler/Unicode 32-bit.bin"
+          rm ahk.zip
+
+      - name: Set up Resource Hacker
+        env:
+          DL_RESHACKER: ${{ vars.DL_RESHACKER }}
+          SHA_RESHACKER: ${{ vars.SHA_RESHACKER }}
+        run: |
+          wget -qO rh.zip ${{ env.DL_RESHACKER }}
+          echo "${{ env.SHA_RESHACKER }} rh.zip" | sha256sum -c || exit 1
+          unzip rh.zip ResourceHacker.exe
+          rm rh.zip
+
+      - name: Build executable
+        run: |
+          xvfb-run wine Ahk2Exe.exe /silent verbose /in ${{ env.APP_FILE }}.ahk
+
+      - name: Sign executable with OSSign
+        if: ${{ secrets.OSSIGN_CONFIG != '' }}
+        env:
+          OSSIGN_CONFIG: ${{ secrets.OSSIGN_CONFIG }}
+        run: |
+          ossign -t pecoff -o ${{ env.APP_FILE }}.exe ${{ env.APP_FILE }}.exe
+
+      - id: virustotal
+        if: ${{ secrets.VT_API_KEY != '' }}
+        name: Scan with VirusTotal
+        uses: https://github.com/crazy-max/ghaction-virustotal@v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          files: |
+            ./${{ env.APP_FILE }}.exe
+
+      - name: Get VirusTotal URL
+        if: ${{ secrets.VT_API_KEY != '' }}
+        env:
+          ANALYSIS: ${{ steps.virustotal.outputs.analysis }}
+        run: |
+          VT_URL=$(echo "${ANALYSIS}" | grep -oP ".*exe=\K.*")
+          echo "VT_URL=${VT_URL}" >> $GITHUB_ENV
+          echo "${VT_URL}"
+
+      - name: Create zip
+        run: |
+          APP_VERSION=$(grep -oP "SetFileVersion \K[\d.]+" ${{ env.APP_FILE }}.ahk)
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
+          mkdir ./dist
+          zip ./dist/${{ env.APP_FILE }}_${APP_VERSION}.zip ${{ env.APP_FILE }}.exe ${{ env.APP_FILE }}.url *.ps1
+
+      - name: Upload artifacts
+        uses: forgejo/upload-artifact@v4
+        with:
+          path: |
+            dist/${{ env.APP_FILE }}*.zip
+          retention-days: 7
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          for file in *; do
+            sha256sum "$file" > "$file.sha256"
+          done
+
+      - name: Create release
+        uses: actions/forgejo-release@v2.13.4
+        with:
+          direction: upload
+          gpg-private-key: ${{ secrets.WINDOWS_PRIVATE_KEY }}
+          token: ${{ secrets.FORGE_TOKEN }}
+          tag: ${{ env.APP_VERSION }}
+          title: ${{ env.APP_NAME }} ${{ env.APP_VERSION }}
+          override: true
+          prerelease: true
+          release-dir: dist
+          release-notes: |
+            - [x] 
+            - [x] 
+            
+            > [!NOTE]
+            > The executable is signed by `OSSign (Scheibling Consulting AB)`. For more information, see our [FAQ](https://librewolf.net/docs/faq/#who-is-ossign-scheibling-consulting-ab).
+            
+            > [!TIP]
+            > The authenticity of the release `.zip` can be verified with GPG.
+            > Import our key: `gpg --import [librewolf].asc` (available at [gpg.librewolf.net](https://gpg.librewolf.net), [keys.openpgp.org](https://keys.openpgp.org/search?q=gpg%40librewolf.net), [keyserver.ubuntu.com](https://keyserver.ubuntu.com/pks/lookup?search=gpg%40librewolf.net&op=index)), then verify: `gpg --verify ${{ env.APP_FILE }}*.asc`.
+            
+            > [!CAUTION]
+            > [Link to VirusTotal Report](${{ env.VT_URL }})
+            > Some antivirus software might mark this as malware. [This is a false positive](https://www.autohotkey.com/docs/v1/FAQ.htm#Virus). Please report the program as safe if possible.
+            > <details><summary>Known problematic vendors</summary><em>Arctic Wolf, DeepInstinct, Gridinsoft, NANO-Antivirus, SecureAge, Skyhigh (SWG), Trapmine, Trellix, VirIT, Zillya.</em></details>
+
+      - name: Upload to S3
+        env:
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_KEY: ${{ secrets.S3_KEY }}
+          S3_SECRET: ${{ secrets.S3_SECRET }}
+          S3_PUBLIC_URL: ${{ vars.S3_PUBLIC_URL }}
+        run: |
+          for required_var in S3_ENDPOINT S3_BUCKET S3_KEY S3_SECRET S3_PUBLIC_URL; do
+            if [ -z "${!required_var:-}" ]; then
+              echo "Error: '$required_var' is not set" >&2
+              exit 1
+            fi
+          done
+
+          cd dist
+          for FILE in *; do
+            S3_PATH="/librewolf-winupdater/${APP_VERSION}/${FILE}"
+            echo "-> Uploading ${FILE} to S3" >&2
+            if ! s3cmd put "${FILE}" "s3://${S3_BUCKET}${S3_PATH}" \
+              --access_key="$S3_KEY" \
+              --secret_key="$S3_SECRET" \
+              --host="$S3_ENDPOINT" \
+              --host-bucket="$S3_ENDPOINT" \
+              --guess-mime-type \
+              --no-mime-magic >&2; then
+              echo "Error: Failed to upload ${FILE} to S3" >&2
+              exit 1
+            fi
+            echo "${S3_PUBLIC_URL}${S3_PATH}"
+          done

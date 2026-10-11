@@ -1,0 +1,75 @@
+name: Build
+
+on: [workflow_dispatch]
+
+env:
+  app_file: LibreWolf-WinUpdater
+
+jobs:
+  build:
+    runs-on: epsilon
+    container:
+      image: scottyhardy/docker-wine:stable
+    steps:
+      - name: Set up dependencies
+        run: |
+          wget https://vcs.fi/api/packages/OSSign/debian/repository.key -O /etc/apt/keyrings/ossign.asc -q
+          echo "deb [signed-by=/etc/apt/keyrings/ossign.asc] https://vcs.fi/api/packages/OSSign/debian stable main" | tee /etc/apt/sources.list.d/ossign.list
+          sudo apt-get update
+          sudo apt-get install -y nodejs zip ossign
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Ahk2Exe
+        env:
+          DL_AUTOHOTKEY: ${{ vars.DL_AUTOHOTKEY }}
+          SHA_AUTOHOTKEY: ${{ vars.SHA_AUTOHOTKEY }}
+        run: |
+          wget -qO ahk.zip ${{ env.DL_AUTOHOTKEY }}
+          echo "${{ env.SHA_AUTOHOTKEY }} ahk.zip" | sha256sum -c || exit 1
+          unzip -j ahk.zip Compiler/Ahk2Exe.exe "Compiler/Unicode 32-bit.bin"
+          rm ahk.zip
+
+      - name: Set up Resource Hacker
+        env:
+          DL_RESHACKER: ${{ vars.DL_RESHACKER }}
+          SHA_RESHACKER: ${{ vars.SHA_RESHACKER }}
+        run: |
+          wget -qO rh.zip ${{ env.DL_RESHACKER }}
+          echo "${{ env.SHA_RESHACKER }} rh.zip" | sha256sum -c || exit 1
+          unzip rh.zip ResourceHacker.exe
+          rm rh.zip
+
+      - name: Build executable
+        run: |
+          xvfb-run wine Ahk2Exe.exe /silent verbose /in ${{ env.APP_FILE }}.ahk
+
+      - name: Sign executable with OSSign
+        if: ${{ secrets.OSSIGN_CONFIG != '' }}
+        env:
+          OSSIGN_CONFIG: ${{ secrets.OSSIGN_CONFIG }}
+        run: |
+          ossign -t pecoff -o ${{ env.APP_FILE }}.exe ${{ env.APP_FILE }}.exe
+
+      - id: virustotal
+        if: ${{ secrets.VT_API_KEY != '' }}
+        name: Scan with VirusTotal
+        uses: https://github.com/crazy-max/ghaction-virustotal@v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          files: |
+            ./${{ env.APP_FILE }}.exe
+
+      - name: Create zip
+        run: |
+          APP_VERSION=$(grep -oP "SetFileVersion \K[\d.]+" ${{ env.APP_FILE }}.ahk)
+          mkdir ./dist
+          zip ./dist/${{ env.APP_FILE }}_${APP_VERSION}.zip ${{ env.APP_FILE }}.exe ${{ env.APP_FILE }}.url *.ps1
+
+      - name: Upload artifacts
+        uses: forgejo/upload-artifact@v4
+        with:
+          path: |
+            dist/${{ env.APP_FILE }}*.zip
+          retention-days: 7
