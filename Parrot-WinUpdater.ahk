@@ -1,15 +1,15 @@
-; LibreWolf WinUpdater - https://librewolf.dev/librewolf/winupdater
-;@Ahk2Exe-SetFileVersion 1.21.0
-;@Ahk2Exe-SetProductVersion 1.21.0
+; Parrot WinUpdater - https://github.com/BentendoYT/Parrot-winupdater
+;@Ahk2Exe-SetFileVersion 1.0.0
+;@Ahk2Exe-SetProductVersion 1.0.0
 
 ;@Ahk2Exe-Base Unicode 32*
-;@Ahk2Exe-SetCompanyName LibreWolf Community
-;@Ahk2Exe-SetCopyright ltguillaume
-;@Ahk2Exe-SetDescription LibreWolf WinUpdater
-;@Ahk2Exe-SetMainIcon LibreWolf-WinUpdater.ico
-;@Ahk2Exe-AddResource LibreWolf-WinUpdaterBlue.ico, 160
-;@Ahk2Exe-SetOrigFilename LibreWolf-WinUpdater.exe
-;@Ahk2Exe-SetProductName LibreWolf WinUpdater
+;@Ahk2Exe-SetCompanyName Parrot Digital
+;@Ahk2Exe-SetCopyright Bentendo
+;@Ahk2Exe-SetDescription Parrot WinUpdater
+;@Ahk2Exe-SetMainIcon Parrot-WinUpdater.ico
+;@Ahk2Exe-AddResource Parrot-WinUpdaterBlue.ico, 160
+;@Ahk2Exe-SetOrigFilename Parrot-WinUpdater.exe
+;@Ahk2Exe-SetProductName Parrot WinUpdater
 ;@Ahk2Exe-PostExec ResourceHacker.exe -open "%A_WorkFileName%" -save "%A_WorkFileName%" -action delete -mask ICONGROUP`,206`, ,,,,1
 ;@Ahk2Exe-PostExec ResourceHacker.exe -open "%A_WorkFileName%" -save "%A_WorkFileName%" -action delete -mask ICONGROUP`,207`, ,,,,1
 ;@Ahk2Exe-PostExec ResourceHacker.exe -open "%A_WorkFileName%" -save "%A_WorkFileName%" -action delete -mask ICONGROUP`,208`, ,,,,1
@@ -19,9 +19,9 @@
 #SingleInstance, Off
 
 Global Args       := ""
-, Browser         := "LibreWolf"
-, BrowserExe      := "librewolf.exe"
-, BrowserPortable := "LibreWolf\" BrowserExe
+, Browser         := "Parrot Browser"
+, BrowserExe      := "parrot.exe"
+, BrowserPortable := "ParrotBrowser\" BrowserExe
 , ConnectCheckUrl := "https://codeberg.org/api/v1/version"
 , ReleaseApiUrl   := "https://codeberg.org/api/v1/repos/librewolf/bsys6/releases/latest"
 , UpdaterApiUrl   := "https://codeberg.org/api/v1/repos/librewolf/winupdater/releases/latest"
@@ -62,7 +62,7 @@ Global _Updater       := Browser " WinUpdater"
 , _SelectFileTitle    := _Title " - Select " BrowserExe "..."
 , _WritePermError     := "Could not write to {}. Please check the current user account's write permissions for this folder."
 , _CopyError          := "Could not copy {}"
-, _32BitLW            := "LibreWolf does not provide a 32-bit build anymore."
+, _32BitLW            := "Parrot does not provide a 32-bit build anymore."
 , _32BitOS            := "Consider using a 64-bit Windows installation if possible, or switch to Firefox 32-bit."
 , _SwitchTo64         := "Click Yes to switch to the 64-bit build or No to quit."
 , _GetBuildError      := "Could not determine the build type of " Browser "."
@@ -147,9 +147,23 @@ Init() {
 
 	; Set up GUI
 	Gui, +HwndGuiHwnd -MaximizeBox
-	Gui, Color, 23222B
+
+Gui, +HwndGuiHwnd -MaximizeBox
+
+	; Windows Bar Style
+	DarkMode := 1
+	TitleColor := 0x202020
+	TextColor := 0xFFFFFF
+
+	DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 20, "Int*", DarkMode, "Int", 4)
+	DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 35, "Int*", TitleColor, "Int", 4)
+	DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 36, "Int*", TextColor, "Int", 4)
+
+	Gui, Color, 1a1a1a
+
+	Gui, Color, 1a1a1a
 	Gui, Add, Picture, x12 y10 w64 h64 Icon2, %A_ScriptFullPath%
-	Gui, Font, c00ACFF s22 w700, Segoe UI
+	Gui, Font, cFFFFFF s18 w700, Segoe UI
 	Gui, Add, Text, x85 y4 BackgroundTrans, %Browser%
 	Gui, Font, cFFFFFF s9 w700
 	Gui, Add, Text, vVerField x86 y42 w222 BackgroundTrans
@@ -200,10 +214,8 @@ Action(ItemName, GuiEvent, LinkIndex) {
 			; Links in error dialog
 			If (LinkIndex = 1)
 				Return Restart()
-			If (LinkIndex = 2)
-				ItemName := "WinUpdater"
 
-			Url := "https://librewolf.dev/librewolf/" StrReplace(ItemName, " Help") "#readme"
+			Url := "https://github.com/BentendoYT/Parrot-winupdater"
 			Try Run, %Url%
 			Catch {
 				RegRead, DefBrowser, HKCR, .html
@@ -754,7 +766,7 @@ Die(Error, Var = False, Show = True) {
 	GuiControl, Hide, TaskSetField
 	GuiControl, Hide, UpdateButton
 	Gui, Font, s38
-	Gui, Add, Text, x264 y-2 cYellow, % Chr("0x26A0")
+	Gui, Add, Text, x264 y-2 cWhite, % Chr("0x26A0")
 	Gui, Font, s9
 	Msg := Msg " " (ChangesMade ? _ChangesMade : _NoChangesMade) "`n`n" _GoToWebsite
 	Gui, Add, Link, gAction x15 y81 w290 cCCCCCC, %Msg%
