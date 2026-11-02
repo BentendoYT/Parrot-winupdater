@@ -1,4 +1,4 @@
-$Browser = "LibreWolf"
+$Browser = "Parrot"
 $Hours   = 4
 
 $Updater = "$Browser WinUpdater"

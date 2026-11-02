@@ -1,4 +1,4 @@
-$Browser = "LibreWolf"
+$Browser = "Parrot"
 
 $Updater = "$Browser WinUpdater"
 $Host.UI.RawUI.WindowTitle = "$Updater Task Scheduler"

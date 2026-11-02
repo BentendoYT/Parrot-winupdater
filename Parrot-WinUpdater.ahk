@@ -22,13 +22,16 @@ Global Args       := ""
 , Browser         := "Parrot Browser"
 , BrowserExe      := "parrot.exe"
 , BrowserPortable := "ParrotBrowser\" BrowserExe
-, ConnectCheckUrl := "https://codeberg.org/api/v1/version"
-, ReleaseApiUrl   := "https://codeberg.org/api/v1/repos/librewolf/bsys6/releases/latest"
-, UpdaterApiUrl   := "https://codeberg.org/api/v1/repos/librewolf/winupdater/releases/latest"
+, Short           := "Parrot"
+, AssetPrefix     := "parrot"
+, SignedBuilds    := False
+, ConnectCheckUrl := "https://api.github.com/rate_limit"
+, ReleaseApiUrl   := "https://api.github.com/repos/BentendoYT/Parrot-Browser/releases/latest"
+, UpdaterApiUrl   := "https://api.github.com/repos/BentendoYT/Parrot-winupdater/releases/latest"
 , SetupParams     := "/D={}"
 , TaskCreateFile  := "ScheduledTask-Create.ps1"
 , TaskRemoveFile  := "ScheduledTask-Remove.ps1"
-, UpdaterFile     := Browser "-WinUpdater.exe"
+, UpdaterFile     := Short "-WinUpdater.exe"
 , PortableExe     := Browser "-Portable.exe"
 , IsPortable      := FileExist(A_ScriptDir "\" PortableExe)
 , RunningPortable := A_Args[1] = "/Portable"
@@ -97,6 +100,7 @@ Global _Updater       := Browser " WinUpdater"
 , _To                 := "to"
 , _GoToWebsite        := "<a>Restart WinUpdater</a> or visit the <a>project website</a> for help."
 
+SetRegView, 64
 CheckSettings()
 Init()
 CheckArgs()
@@ -159,16 +163,16 @@ Gui, +HwndGuiHwnd -MaximizeBox
 	DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 35, "Int*", TitleColor, "Int", 4)
 	DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 36, "Int*", TextColor, "Int", 4)
 
-	Gui, Color, 1a1a1a
+	Gui, Color, 191919
 
-	Gui, Color, 1a1a1a
+	Gui, Color, 191919
 	Gui, Add, Picture, x12 y10 w64 h64 Icon2, %A_ScriptFullPath%
 	Gui, Font, cFFFFFF s18 w700, Segoe UI
 	Gui, Add, Text, x85 y4 BackgroundTrans, %Browser%
 	Gui, Font, cFFFFFF s9 w700
 	Gui, Add, Text, vVerField x86 y42 w222 BackgroundTrans
 	Gui, Font, w400
-	Gui, Add, Progress, vProgField w217 h20 c00ACFF, 10
+	Gui, Add, Progress, vProgField w217 h20 cadadad, 10
 	Gui, Add, Link, gReinstall vLogField w222
 	Gui, Margin,, 15
 	Gui, Show, Hide, %_Title%
@@ -392,7 +396,7 @@ SelfUpdate() {
 	If (!VerCompare(GetLatestVersion(), ">" CurrentUpdaterVersion))
 		Return
 
-	RegExMatch(ReleaseInfo, "i)""name"":\s*""(" Browser "-WinUpdater.{1,15}\.zip)"".*?""browser_download_url"":\s*""(.+?)""", DownloadInfo)
+	RegExMatch(ReleaseInfo, "is)""name"":\s*""(" Short "-WinUpdater.{1,15}\.zip)"".*?""browser_download_url"":\s*""(.+?)""", DownloadInfo)
 	If (!DownloadInfo1 Or !DownloadInfo2)
 		Return Log("SelfUpdate", _FindUrlError, True)
 
@@ -489,7 +493,7 @@ GetUpdate() {
 DownloadUpdate() {
 	; Get setup file URL
 	FilenameEnd := Build (IsPortable ? "-portable\.zip" : "-setup\.exe")
-	RegExMatch(ReleaseInfo, "i)""name"":\s*""(" Browser "-.{1,30}?" FilenameEnd ")"".*?""browser_download_url"":\s*""(.+?)""", DownloadInfo)
+	RegExMatch(ReleaseInfo, "is)""name"":\s*""(" AssetPrefix "-.{1,30}?" FilenameEnd ")"".*?""browser_download_url"":\s*""(.+?)""", DownloadInfo)
 
 ;MsgBox, Downloading`n%DownloadInfo2%`nto`n%DownloadInfo1%
 	If (!DownloadInfo1 Or !DownloadInfo2)
@@ -549,7 +553,7 @@ ReleaseMem() {
 
 Verify(File, Signature = True) {
 	; Get checksum file
-	RegEx := "i)""name"":\s*""" (Task = _Updater ? Browser "-WinUpdater.+?\.sha256" : "sha256sums\.txt") """.*?""browser_download_url"":\s*""(.+?)"""
+	RegEx := "is)""name"":\s*""" (Task = _Updater ? Short "-WinUpdater.+?\.sha256" : "sha256sums\.txt") """.*?""browser_download_url"":\s*""(.+?)"""
 	RegExMatch(ReleaseInfo, RegEx, ChecksumUrl)
 	If (!ChecksumUrl1)
 		Die(_FindSumsUrlError)
@@ -571,7 +575,7 @@ Verify(File, Signature = True) {
 }
 
 CheckSignature(File) {
-	If (NoSigChecks Or ShutdownBlocked)	; During a blocked shutdown, the signature checks will always fail
+	If (NoSigChecks Or ShutdownBlocked Or !SignedBuilds)	; During a blocked shutdown, the signature checks will always fail
 		Return
 	; Check if the file is correctly signed by the the right signer
 	Cmd = $sig = Get-AuthenticodeSignature """%File%""" | Where-Object { $_.Status -eq """Valid""" -and $_.SignerCertificate.Subject -like """CN=*(Scheibling Consulting AB)*L=Uppsala*""" } `; exit -not $sig
@@ -876,7 +880,7 @@ GetLatestVersion() {
 CheckConnection() {
 	Connected := Download(ConnectCheckUrl)
 ;MsgBox, %Connected%
-	If (!Connected Or !InStr(Connected, """version"":")) {
+	If (!Connected Or !InStr(Connected, """rate"":")) {
 		RegExMatch(Connected, "i)<title>(.+?)</title>", Title)
 		Title := Title1 ? "`n" Title1 "." : ""
 ;MsgBox, %Title%
