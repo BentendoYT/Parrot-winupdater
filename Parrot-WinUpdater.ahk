@@ -43,7 +43,7 @@ Global Args       := ""
 , ReleaseInfo, CurrentVersion, NewVersion, SetupFile, GuiHwnd, LogField, ProgField, VerField, TaskSetField, UpdateButton, Reinstalling, ShutdownBlocked, Died
 
 ; Strings
-Global _Updater       := Browser " WinUpdater"
+Global _Updater       := Short " WinUpdater"
 , _Title              := _Updater " {}"
 , _Show               := "Show"
 , _PortableHelp       := "Portable Help"
@@ -68,7 +68,7 @@ Global _Updater       := Browser " WinUpdater"
 , _32BitLW            := "Parrot does not provide a 32-bit build anymore."
 , _32BitOS            := "Consider using a 64-bit Windows installation if possible, or switch to Firefox 32-bit."
 , _SwitchTo64         := "Click Yes to switch to the 64-bit build or No to quit."
-, _GetBuildError      := "Could not determine the build type of " Browser "."
+, _GetBuildError      := "Could not determine the build type of " Short "."
 , _GetVersionError    := "Could not determine the current version of`n{}"
 , _CrlError           := "The server certificate revocation check for {} has failed. Right-click on WinUpdater's tray icon, then ""WinUpdater Help"" for more info.`nContinue anyway?"
 , _DownloadJsonError  := "Could not download the {Task} releases file."
@@ -85,18 +85,18 @@ Global _Updater       := Browser " WinUpdater"
 , _SignatureError     := "Could not verify that {} was correctly signed.`n`n1. Only click Yes to continue if this warning was expected.`n2. Make sure PowerShell has internet access to check the certificate. If so, the file may have been tampered with.`n3. Click No and try again by restarting WinUpdater.`n4. Check for known issues on the project website."
 , _SignatureErrorExit := "Signature verification for {} has failed."
 , _ChangesMade        := "However, new files were written to the target folder!"
-, _NoChangesMade      := "No changes were made to your " Browser " folder."
+, _NoChangesMade      := "No changes were made to your " Short " folder."
 , _Extracting         := "Extracting portable version..."
 , _StartUpdate        := "  &Start update  "
 , _Installing         := "Installing new version..."
 , _UpdateError        := "Error while updating{}."
 , _SilentUpdateError  := "Silent update did not complete.`nDo you want to run the interactive installer?"
-, _NewVersionFound    := "New version available.`nClose " Browser " to continue..."
+, _NewVersionFound    := "New version available.`nClose " Short " to continue..."
 , _NoNewVersion       := "No new version. <a>Reinstall</a> if issues occur."
-, _ExtractionError    := "Could not extract the {Task} archive.`nMake sure " Browser " is not running and restart the updater."
+, _ExtractionError    := "Could not extract the {Task} archive.`nMake sure " Short " is not running and restart the updater."
 , _MoveToTargetError  := "Could not move the following file into the target folder:`n{}"
 , _IsUpdating         := "Update in progress..."
-, _IsUpdated          := Browser " has been updated."
+, _IsUpdated          := Short " has been updated."
 , _To                 := "to"
 , _GoToWebsite        := "<a>Restart WinUpdater</a> or visit the <a>project website</a> for help."
 
@@ -168,7 +168,7 @@ Gui, +HwndGuiHwnd -MaximizeBox
 	Gui, Color, 191919
 	Gui, Add, Picture, x12 y10 w64 h64 Icon2, %A_ScriptFullPath%
 	Gui, Font, cFFFFFF s18 w700, Segoe UI
-	Gui, Add, Text, x85 y4 BackgroundTrans, %Browser%
+	Gui, Add, Text, x85 y4 BackgroundTrans, %Short%
 	Gui, Font, cFFFFFF s9 w700
 	Gui, Add, Text, vVerField x86 y42 w222 BackgroundTrans
 	Gui, Font, w400
@@ -762,7 +762,7 @@ Die(Error, Var = False, Show = True) {
 	Msg := Error
 	If (Var)
 		Msg := StrReplace(Msg, "{}", Var)
-	Msg := StrReplace(Msg, "{Task}", Task)
+	Msg := StrReplace(Msg, "{Task}", (Task = Browser ? Short : Task))
 	Log("LastResult", Msg)
 	GuiControl, Hide, ProgField
 	GuiControl, Hide, LogField
@@ -773,7 +773,7 @@ Die(Error, Var = False, Show = True) {
 	Gui, Add, Text, x264 y-2 cWhite, % Chr("0x26A0")
 	Gui, Font, s9
 	Msg := Msg " " (ChangesMade ? _ChangesMade : _NoChangesMade) "`n`n" _GoToWebsite
-	Gui, Add, Link, gAction x15 y81 w290 cCCCCCC, %Msg%
+	AddLinkText(Msg, 15, 81, 290, "CCCCCC", "FFFFFF")
 
 	Died := Error
 	If (Show)
@@ -781,6 +781,61 @@ Die(Error, Var = False, Show = True) {
 	Else
 		Exit()
 }
+
+; --- Parrot link helpers ---
+; The Windows Link control always paints links in the system link colour (blue), which is hard to
+; read on the dark window. Text with <a>...</a> markup is therefore drawn with Text controls instead:
+; normal words in Color, link words in LinkColor with an underline. A click calls Action() with the link number.
+AddLinkText(Markup, X, Y, W, Color = "CCCCCC", LinkColor = "FFFFFF") {
+	Global LinkMap
+	If (!IsObject(LinkMap)) {
+		LinkMap := {}
+		OnMessage(0x20, "LinkSetCursor")	; WM_SETCURSOR: hand cursor over links
+	}
+	SpaceW := 4, CX := X, CY := Y, LineH := 0, Link := 0, LinkNum := 0, Pos := 1
+	While (RegExMatch(Markup, "O)<a>|</a>|\R|[^\s<]+|[ \t]+|\s|<", M, Pos)) {
+		Pos := M.Pos(0) + M.Len(0)
+		Token := M.Value(0)
+		If (Token = "<a>") {
+			Link := ++LinkNum
+		} Else If (Token = "</a>") {
+			Link := 0
+		} Else If (InStr(Token, "`n") Or InStr(Token, "`r")) {
+			CX := X, CY += (LineH ? LineH : 17)
+		} Else If (RegExMatch(Token, "^\s+$")) {
+			CX += SpaceW
+		} Else {
+			Gui, Font, % "s9 w400 " (Link ? "Underline c" LinkColor : "Norm c" Color)
+			Gui, Add, Text, % "x" CX " y" CY " +0x80 BackgroundTrans" (Link ? " +0x100 gLinkClick" : "") " hwndH", %Token%
+			GuiControlGet, P, Pos, %H%
+			If (CX > X And CX + PW > X + W) {
+				CX := X, CY += (LineH ? LineH : PH)
+				GuiControl, Move, %H%, x%CX% y%CY%
+			}
+			If (PH > LineH)
+				LineH := PH
+			If (Link)
+				LinkMap[H] := Link
+			CX += PW
+		}
+	}
+	Gui, Font, % "s9 w400 Norm c" Color
+	Return CY + LineH
+}
+
+LinkClick(CtrlHwnd) {
+	Global LinkMap
+	Action("", False, LinkMap[CtrlHwnd])
+}
+
+LinkSetCursor(wParam, lParam, Msg, Hwnd) {
+	Global LinkMap
+	If (IsObject(LinkMap) And LinkMap.HasKey(wParam)) {
+		DllCall("SetCursor", "Ptr", DllCall("LoadCursor", "Ptr", 0, "Ptr", 32649, "Ptr"))
+		Return True
+	}
+}
+; --- end of Parrot link helpers ---
 
 Download(URL) {
 	CurrentDomain := SubStr(URL, 1, InStr(URL, "/",,, 3) - 1)
@@ -803,7 +858,7 @@ Download(URL) {
 }
 
 CrlCheck() {
-	If (WinExist("ahk_exe " UpdaterFile " ahk_class #32770",, Browser)) {
+	If (WinExist("ahk_exe " UpdaterFile " ahk_class #32770",, Short)) {
 		If (!IgnoreCrlErrors) {
 			Msg := StrReplace(_CrlError, "{}", CurrentDomain)
 			MsgBox, 52, %_Title%, %Msg%
@@ -1008,7 +1063,7 @@ FreeHandles:
 }
 
 Log(Key, Msg = "", PrefixTime = False) {
-	Msg := StrReplace(Msg, "{Task}", Task)
+	Msg := StrReplace(Msg, "{Task}", (Task = Browser ? Short : Task))
 	If (PrefixTime) {
 		FormatTime, CurrentTime
 		Msg := CurrentTime (Msg ? " " Msg : "")
