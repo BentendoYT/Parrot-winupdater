@@ -785,24 +785,26 @@ Die(Error, Var = False, Show = True) {
 ; --- Parrot link helpers ---
 ; The Windows Link control always paints links in the system link colour (blue), which is hard to
 ; read on the dark window. Text with <a>...</a> markup is therefore drawn with Text controls instead:
-; normal words in Color, link words in LinkColor with an underline. A click calls Action() with the link number.
+; normal words in Color, links in LinkColor with an underline. A whole link ("Restart WinUpdater")
+; is one control, so it is underlined and clickable as one piece and wraps as a whole.
+; A click calls Action() with the link number.
 AddLinkText(Markup, X, Y, W, Color = "CCCCCC", LinkColor = "FFFFFF") {
 	Global LinkMap
 	If (!IsObject(LinkMap)) {
 		LinkMap := {}
 		OnMessage(0x20, "LinkSetCursor")	; WM_SETCURSOR: hand cursor over links
 	}
-	SpaceW := 4, CX := X, CY := Y, LineH := 0, Link := 0, LinkNum := 0, Pos := 1
-	While (RegExMatch(Markup, "O)<a>|</a>|\R|[^\s<]+|[ \t]+|\s|<", M, Pos)) {
+	SpaceW := 4, CX := X, CY := Y, LineH := 0, LinkNum := 0, Pos := 1
+	While (RegExMatch(Markup, "O)<a>(.*?)</a>|\R|[^\s<]+|[ \t]+|\s|<", M, Pos)) {
 		Pos := M.Pos(0) + M.Len(0)
-		Token := M.Value(0)
-		If (Token = "<a>") {
+		Token := M.Value(0), Link := 0
+		If (M.Pos(1) > 0) {
 			Link := ++LinkNum
-		} Else If (Token = "</a>") {
-			Link := 0
-		} Else If (InStr(Token, "`n") Or InStr(Token, "`r")) {
+			Token := M.Value(1)
+		}
+		If (!Link And (InStr(Token, "`n") Or InStr(Token, "`r"))) {
 			CX := X, CY += (LineH ? LineH : 17)
-		} Else If (RegExMatch(Token, "^\s+$")) {
+		} Else If (!Link And RegExMatch(Token, "^\s+$")) {
 			CX += SpaceW
 		} Else {
 			Gui, Font, % "s9 w400 " (Link ? "Underline c" LinkColor : "Norm c" Color)
